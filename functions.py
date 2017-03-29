@@ -3,9 +3,7 @@ import pickle
 import sys
 import subprocess
 import tkinter as tk
-from tkinter import ttk
-from tkinter import filedialog
-from tkinter import messagebox
+from tkinter import ttk, filedialog, messagebox
 from Crypto.Hash import SHA256
 from Crypto.Cipher import AES
 from Crypto.Protocol.KDF import PBKDF2
@@ -17,57 +15,6 @@ from frames import CreatePassFrame, EnterPassFrame, AccessPanel, EditFileSentine
 # Global temporary directory to be used for all file I/O
 # Deleted upon closing of program in GUI.py
 temp_file_dir = mkdtemp()
-
-
-def create_password(password, password_2, create_pass_frame, vault_dir):
-    pass_frame = create_pass_frame.pass_frame
-
-    if password != password_2:
-        print("mismatch")
-        mismatch_label = ttk.Label(pass_frame, text="Passwords do not match", foreground="red")
-        mismatch_label.grid(row=4)
-        return
-    if len(password) < 32:
-        print("length" + str(len(password)))
-        mismatch_label = ttk.Label(pass_frame, text="Password must be at least 32 characters", foreground="red")
-        mismatch_label.grid(row=4)
-        return
-
-    with open(os.path.join(vault_dir, "cupboard.lbf"), 'wb+') as cupboard_out:
-        cupboard = {}
-
-        passphrase_bytes = password[:32].encode('utf-8')
-        pp_salt = os.urandom(32)
-        salted_pp = passphrase_bytes + pp_salt
-        cupboard['pp_salt'] = pp_salt
-        cupboard['hashed_pp'] = SHA256.new(salted_pp).digest()
-
-        dk_salt = os.urandom(32)
-        derived_key = PBKDF2(password, dk_salt, dkLen=32, count=10000)
-        cupboard["dk_salt"] = dk_salt
-
-        if create_pass_frame.p_key:  # If changing existing passphrase
-            plain_rk = create_pass_frame.p_key
-            cupboard_out.truncate(0)
-        else:
-            plain_rk = os.urandom(32)
-
-        iv = os.urandom(16)
-        cipher = AES.new(derived_key, AES.MODE_CFB, iv)
-        cipher_rk = cipher.encrypt(plain_rk)
-        cupboard['cipher_key'] = cipher_rk
-        cupboard['rk_IV'] = iv
-
-        pickle.dump(cupboard, cupboard_out)
-
-    try:
-        with open(os.path.join(vault_dir, "directory.lbf"), 'xb+') as f_iv_dir:
-            iv_dir = {}
-            pickle.dump(iv_dir, f_iv_dir)
-    except FileExistsError:
-        print('Preserving iv_dir')
-
-    select_dir(pass_frame, vault_dir)
 
 
 def select_dir(old_frame, vault_dir):
@@ -85,27 +32,9 @@ def select_dir(old_frame, vault_dir):
     EnterPassFrame(mainframe, vault_dir, check_password)
 
 
-def create_dir(old_frame):
-    vault_dir = filedialog.askdirectory()
-    if not vault_dir:
-        return
-    if os.path.isfile(os.path.join(vault_dir, 'cupboard.lbf')):
-        top = tk.Toplevel()
-        l = ttk.Label(top, foreground='red', text="Directory already contains encryption data.")
-        l.grid(pady=20, padx=20)
-        return
-
-    mainframe = old_frame.master
-    old_frame.destroy()
-
-    CreatePassFrame(mainframe, vault_dir, None, create_password)
-
-
 def check_password(vault_dir, passphrase, check_pass_frame):
     with open(os.path.join(vault_dir, "cupboard.lbf"), 'rb') as cupboard_f:
         cupboard = pickle.load(cupboard_f)
-        print('Cupboard: ')
-        print(cupboard)
     password_bytes = passphrase[:32].encode('utf-8')
     salted_pp = password_bytes + cupboard['pp_salt']
     hashed_pw = SHA256.new(salted_pp).digest()
@@ -149,12 +78,69 @@ def access_directory(vault_dir, passphrase, check_pass_frame):
     AccessPanel(mainframe, keychain, core_functions)
 
 
-def get_key(cupboard, passphrase):
-    derived_key = PBKDF2(passphrase, cupboard['dk_salt'], dkLen=32, count=10000)
+def create_dir(old_frame):
+    vault_dir = filedialog.askdirectory()
+    if not vault_dir:
+        return
+    if os.path.isfile(os.path.join(vault_dir, 'cupboard.lbf')):
+        top = tk.Toplevel()
+        l = ttk.Label(top, foreground='red', text="Directory already contains encryption data.")
+        l.grid(pady=20, padx=20)
+        return
 
-    cipher = AES.new(derived_key, AES.MODE_CFB, cupboard['rk_IV'])
-    random_key = cipher.decrypt(cupboard['cipher_key'])
-    return random_key
+    mainframe = old_frame.master
+    old_frame.destroy()
+
+    CreatePassFrame(mainframe, vault_dir, None, create_password)
+
+
+def create_password(password, password_2, create_pass_frame, vault_dir):
+    pass_frame = create_pass_frame.pass_frame
+
+    if password != password_2:
+        mismatch_label = ttk.Label(pass_frame, text="Passwords do not match", foreground="red")
+        mismatch_label.grid(row=4)
+        return
+    if len(password) < 32:
+        mismatch_label = ttk.Label(pass_frame, text="Password must be at least 32 characters", foreground="red")
+        mismatch_label.grid(row=4)
+        return
+
+    with open(os.path.join(vault_dir, "cupboard.lbf"), 'wb+') as cupboard_out:
+        cupboard = {}
+
+        passphrase_bytes = password[:32].encode('utf-8')
+        pp_salt = os.urandom(32)
+        salted_pp = passphrase_bytes + pp_salt
+        cupboard['pp_salt'] = pp_salt
+        cupboard['hashed_pp'] = SHA256.new(salted_pp).digest()
+
+        dk_salt = os.urandom(32)
+        derived_key = PBKDF2(password, dk_salt, dkLen=32, count=10000)
+        cupboard["dk_salt"] = dk_salt
+
+        if create_pass_frame.p_key:  # If changing existing passphrase
+            plain_rk = create_pass_frame.p_key
+            cupboard_out.truncate(0)
+        else:
+            plain_rk = os.urandom(32)
+
+        iv = os.urandom(16)
+        cipher = AES.new(derived_key, AES.MODE_CFB, iv)
+        cipher_rk = cipher.encrypt(plain_rk)
+        cupboard['cipher_key'] = cipher_rk
+        cupboard['rk_IV'] = iv
+
+        pickle.dump(cupboard, cupboard_out)
+
+    try:
+        with open(os.path.join(vault_dir, "directory.lbf"), 'xb+') as f_iv_dir:
+            iv_dir = {}
+            pickle.dump(iv_dir, f_iv_dir)
+    except FileExistsError:
+        pass
+
+    select_dir(pass_frame, vault_dir)
 
 
 def open_file(keychain, filename):
@@ -194,15 +180,6 @@ def edit_file(keychain):
     top.protocol("WM_DELETE_WINDOW", lambda: sentinel_close(filename, temp_filename, keychain, top))
 
     EditFileSentinel(top, filename, temp_filename, keychain, sentinel_close)
-
-
-def sentinel_close(filename, temp_filename, keychain, top):
-    success = overwrite_file(filename, temp_filename, keychain)
-    messagebox.showinfo(message='Editing saved successfully')
-    if success:
-        top.destroy()
-    else:
-        return
 
 
 def overwrite_file(filename, temp_filename, keychain):
@@ -248,6 +225,70 @@ def import_file(keychain):
     messagebox.showinfo(message="Import and encryption complete for {} file(s)".format(len(filenames)))
 
 
+def import_folder(keychain):
+    source_dir = filedialog.askdirectory(title="Choose folder to import")
+    if not source_dir:
+        return
+
+    target_dir = filedialog.askdirectory(title="Choose where to import files", initialdir=keychain['vault_dir'])
+    if not target_dir:
+        return
+
+    move_folders(keychain, source_dir, target_dir, encrypt=True)
+    messagebox.showinfo(message='Import successful')
+
+
+def export_file(keychain):
+    source_filenames = filedialog.askopenfilenames(title="Select file(s) to export", initialdir=keychain['vault_dir'])
+    if not source_filenames:
+        return
+
+    target_dir = filedialog.askdirectory(title="Select location to export file")
+    if not target_dir:
+        return
+
+    for source_filename in source_filenames:
+        target_filename = os.path.join(target_dir, os.path.basename(source_filename))[:-7]
+        decrypt_write_file(keychain, source_filename, target_filename)
+    messagebox.showinfo(message='Export successful for {} file(s)'.format(len(source_filenames)))
+
+
+def export_folder(keychain):
+    source_dir = filedialog.askdirectory(title='Select folder to export', initialdir=keychain['vault_dir'])
+    if not source_dir:
+        return
+
+    target_dir = filedialog.askdirectory(title='Select location to send files')
+    if not target_dir:
+        return
+
+    move_folders(keychain, source_dir, target_dir, encrypt=False)
+    messagebox.showinfo(message='Export successful')
+
+
+def change_passphrase(keychain, access_frame):
+    mainframe = access_frame.master
+    access_frame.destroy()
+    CreatePassFrame(mainframe, keychain['vault_dir'], keychain['p_key'], create_password)
+
+
+def get_key(cupboard, passphrase):
+    derived_key = PBKDF2(passphrase, cupboard['dk_salt'], dkLen=32, count=10000)
+
+    cipher = AES.new(derived_key, AES.MODE_CFB, cupboard['rk_IV'])
+    random_key = cipher.decrypt(cupboard['cipher_key'])
+    return random_key
+
+
+def sentinel_close(filename, temp_filename, keychain, top):
+    success = overwrite_file(filename, temp_filename, keychain)
+    messagebox.showinfo(message='Editing saved successfully')
+    if success:
+        top.destroy()
+    else:
+        return
+
+
 def encrypt_write_file(keychain, filename, target_filename):
     iv_dir = keychain['iv_dir']
     p_key = keychain['p_key']
@@ -268,13 +309,6 @@ def encrypt_write_file(keychain, filename, target_filename):
     with open(target_filename + iv_key, 'wb') as f_out:
         f_out.write(cipher_bytes)
     update_iv_dir(keychain)
-
-
-def update_iv_dir(keychain):
-    # Truncate and update IV directory file
-    with open(os.path.join(keychain['vault_dir'], 'directory.lbf'), 'wb') as iv_dir_f:
-        iv_dir_f.truncate(0)
-        pickle.dump(keychain['iv_dir'], iv_dir_f)
 
 
 def move_folders(keychain, source_dir, target_dir, encrypt):
@@ -321,17 +355,11 @@ def move_folders(keychain, source_dir, target_dir, encrypt):
                 decrypt_write_file(keychain, filename, target_filename)
 
 
-def import_folder(keychain):
-    source_dir = filedialog.askdirectory(title="Choose folder to import")
-    if not source_dir:
-        return
-
-    target_dir = filedialog.askdirectory(title="Choose where to import files", initialdir=keychain['vault_dir'])
-    if not target_dir:
-        return
-
-    move_folders(keychain, source_dir, target_dir, encrypt=True)
-    messagebox.showinfo(message='Import successful')
+def update_iv_dir(keychain):
+    # Truncate and update IV directory file
+    with open(os.path.join(keychain['vault_dir'], 'directory.lbf'), 'wb') as iv_dir_f:
+        iv_dir_f.truncate(0)
+        pickle.dump(keychain['iv_dir'], iv_dir_f)
 
 
 def decrypt_write_file(keychain, source_filename, target_filename):
@@ -345,41 +373,12 @@ def decrypt_write_file(keychain, source_filename, target_filename):
         try:
             with open(target_filename, 'xb+') as f_out:
                 f_out.write(plain_bytes)
-                print('File created at :' + target_filename)
         except FileExistsError:
             (name_root, ext) = os.path.splitext(target_filename)
             name_root += ' (copy)'
             target_filename = name_root + ext
         else:
             break
-
-
-def export_file(keychain):
-    source_filenames = filedialog.askopenfilenames(title="Select file(s) to export", initialdir=keychain['vault_dir'])
-    if not source_filenames:
-        return
-
-    target_dir = filedialog.askdirectory(title="Select location to export file")
-    if not target_dir:
-        return
-
-    for source_filename in source_filenames:
-        target_filename = os.path.join(target_dir, os.path.basename(source_filename))[:-7]
-        decrypt_write_file(keychain, source_filename, target_filename)
-    messagebox.showinfo(message='Export successful for {} file(s)'.format(len(source_filenames)))
-
-
-def export_folder(keychain):
-    source_dir = filedialog.askdirectory(title='Select folder to export', initialdir=keychain['vault_dir'])
-    if not source_dir:
-        return
-
-    target_dir = filedialog.askdirectory(title='Select location to send files')
-    if not target_dir:
-        return
-
-    move_folders(keychain, source_dir, target_dir, encrypt=False)
-    messagebox.showinfo(message='Export successful')
 
 
 def cleanup_iv_dir(keychain):
@@ -400,16 +399,8 @@ def cleanup_iv_dir(keychain):
     for iv_id in iv_dir:
         if iv_id in current_iv_ids:
             temp_iv_dir[iv_id] = iv_dir[iv_id]
-        else:
-            print(iv_id + " not found.")
     keychain['iv_dir'] = temp_iv_dir
     update_iv_dir(keychain)
-
-
-def change_passphrase(keychain, access_frame):
-    mainframe = access_frame.master
-    access_frame.destroy()
-    CreatePassFrame(mainframe, keychain['vault_dir'], keychain['p_key'], create_password)
 
 
 def cleanup_temp(root):

@@ -18,6 +18,26 @@ class StartupFrame:
             child.grid_configure(padx=15, pady=25)
 
 
+class EnterPassFrame:
+    def __init__(self, mainframe, vault_dir, check_password):
+        self.pass_frame = ttk.Frame(mainframe)
+        self.pass_frame.grid()
+
+        self.label = ttk.Label(self.pass_frame, text="Please enter password")
+        self.label.grid()
+
+        self.password = tk.StringVar()
+        self.pass_entry = ttk.Entry(self.pass_frame, width=40, textvariable=self.password)
+        self.pass_entry.bind('<Return>',
+                             lambda x: check_password(vault_dir, self.password.get(), self.pass_frame))
+        self.pass_entry.grid(row=1, padx=10, pady=10)
+        self.pass_entry.focus_set()
+
+        self.btn = ttk.Button(self.pass_frame, text="Submit password",
+                              command=lambda: check_password(vault_dir, self.password.get(), self.pass_frame))
+        self.btn.grid(row=2)
+
+
 class CreatePassFrame:
     def __init__(self, mainframe, vault_dir, p_key, create_password):
         self.mainframe = mainframe
@@ -45,26 +65,6 @@ class CreatePassFrame:
         self.pass_button.grid(row=3)
 
         self.p_key = p_key  # Old plain key passed to create_password function for changing passphrase
-
-
-class EnterPassFrame:
-    def __init__(self, mainframe, vault_dir, check_password):
-        self.pass_frame = ttk.Frame(mainframe)
-        self.pass_frame.grid()
-
-        self.label = ttk.Label(self.pass_frame, text="Please enter password")
-        self.label.grid()
-
-        self.password = tk.StringVar()
-        self.pass_entry = ttk.Entry(self.pass_frame, width=40, textvariable=self.password)
-        self.pass_entry.bind('<Return>',
-                             lambda x: check_password(vault_dir, self.password.get(), self.pass_frame))
-        self.pass_entry.grid(row=1, padx=10, pady=10)
-        self.pass_entry.focus_set()
-
-        self.btn = ttk.Button(self.pass_frame, text="Submit password",
-                              command=lambda: check_password(vault_dir, self.password.get(), self.pass_frame))
-        self.btn.grid(row=2)
 
 
 class AccessPanel:
