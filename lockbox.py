@@ -5,7 +5,7 @@ from functions import cleanup_temp, select_dir, create_dir
 
 
 root = tk.Tk()
-root.title('Lockbox v0.1')
+root.title('Lockbox v0.2')
 
 mainframe = ttk.Frame(root, padding='3 3 12 12')
 mainframe.grid(column=0, row=0, sticky=(tk.N, tk.W, tk.E, tk.S))

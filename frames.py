@@ -27,7 +27,7 @@ class EnterPassFrame:
         self.label.grid()
 
         self.password = tk.StringVar()
-        self.pass_entry = ttk.Entry(self.pass_frame, width=40, textvariable=self.password)
+        self.pass_entry = ttk.Entry(self.pass_frame, width=40, textvariable=self.password, show="*")
         self.pass_entry.bind('<Return>',
                              lambda x: check_password(vault_dir, self.password.get(), self.pass_frame))
         self.pass_entry.grid(row=1, padx=10, pady=10)

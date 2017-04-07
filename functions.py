@@ -35,21 +35,25 @@ def select_dir(old_frame, vault_dir):
 def check_password(vault_dir, passphrase, check_pass_frame):
     with open(os.path.join(vault_dir, "cupboard.lbf"), 'rb') as cupboard_f:
         cupboard = pickle.load(cupboard_f)
-    password_bytes = passphrase[:32].encode('utf-8')
-    salted_pp = password_bytes + cupboard['pp_salt']
-    hashed_pw = SHA256.new(salted_pp).digest()
-    if hashed_pw != cupboard['hashed_pp']:
+
+    dk_salt = cupboard['dk_salt']
+    derived_key = PBKDF2(passphrase[:32], dk_salt, dkLen=32, count=50000)
+
+    hashed_dk_salt = cupboard['hashed_dk_salt']
+    salted_dk = derived_key + hashed_dk_salt
+    hashed_dk = SHA256.new(salted_dk).digest()
+    if hashed_dk != cupboard['hashed_dk']:
         messagebox.showwarning(message="Submitted password does not match password on file.")
         return False
     else:
         messagebox.showinfo(message="Password accepted. Granting access.")
-        access_directory(vault_dir, passphrase, check_pass_frame)
+        access_directory(vault_dir, derived_key, check_pass_frame)
 
 
-def access_directory(vault_dir, passphrase, check_pass_frame):
+def access_directory(vault_dir, derived_key, check_pass_frame):
     with open(os.path.join(vault_dir, 'cupboard.lbf'), 'rb') as cupboard_f:
         cupboard = pickle.load(cupboard_f)
-    p_key = get_key(cupboard, passphrase)
+    p_key = get_key(cupboard, derived_key)
 
     with open(os.path.join(vault_dir, 'directory.lbf'), 'rb') as iv_f:
         iv_dir = pickle.load(iv_f)
@@ -109,15 +113,14 @@ def create_password(password, password_2, create_pass_frame, vault_dir):
     with open(os.path.join(vault_dir, "cupboard.lbf"), 'wb+') as cupboard_out:
         cupboard = {}
 
-        passphrase_bytes = password[:32].encode('utf-8')
-        pp_salt = os.urandom(32)
-        salted_pp = passphrase_bytes + pp_salt
-        cupboard['pp_salt'] = pp_salt
-        cupboard['hashed_pp'] = SHA256.new(salted_pp).digest()
-
         dk_salt = os.urandom(32)
-        derived_key = PBKDF2(password, dk_salt, dkLen=32, count=10000)
+        derived_key = PBKDF2(password[:32], dk_salt, dkLen=32, count=50000)
         cupboard["dk_salt"] = dk_salt
+
+        hashed_dk_salt = os.urandom(32)
+        salted_dk = derived_key + hashed_dk_salt
+        cupboard['hashed_dk_salt'] = hashed_dk_salt
+        cupboard['hashed_dk'] = SHA256.new(salted_dk).digest()
 
         if create_pass_frame.p_key:  # If changing existing passphrase
             plain_rk = create_pass_frame.p_key
@@ -247,10 +250,22 @@ def export_file(keychain):
     if not target_dir:
         return
 
+    failed_filenames = []
     for source_filename in source_filenames:
         target_filename = os.path.join(target_dir, os.path.basename(source_filename))[:-7]
-        decrypt_write_file(keychain, source_filename, target_filename)
-    messagebox.showinfo(message='Export successful for {} file(s)'.format(len(source_filenames)))
+        try:
+            decrypt_write_file(keychain, source_filename, target_filename)
+        except KeyError:
+            failed_filenames.append(source_filename)
+            continue
+
+    if not failed_filenames:
+        messagebox.showinfo(message='Export successful for {} file(s)'.format(len(source_filenames)))
+    else:
+        finished_message = "The following files were not exported: \n"
+        for name in failed_filenames:
+            finished_message += name + "\n\n"
+        messagebox.showinfo(message=finished_message)
 
 
 def export_folder(keychain):
@@ -262,8 +277,14 @@ def export_folder(keychain):
     if not target_dir:
         return
 
-    move_folders(keychain, source_dir, target_dir, encrypt=False)
-    messagebox.showinfo(message='Export successful')
+    failed_filenames = move_folders(keychain, source_dir, target_dir, encrypt=False)
+    if not failed_filenames:
+        messagebox.showinfo(message='Export successful')
+    else:
+        finished_message = "Export complete. The following files were not exported: \n"
+        for name in failed_filenames:
+            finished_message += name + "\n\n"
+        messagebox.showinfo(message=finished_message)
 
 
 def change_passphrase(keychain, access_frame):
@@ -272,9 +293,7 @@ def change_passphrase(keychain, access_frame):
     CreatePassFrame(mainframe, keychain['vault_dir'], keychain['p_key'], create_password)
 
 
-def get_key(cupboard, passphrase):
-    derived_key = PBKDF2(passphrase, cupboard['dk_salt'], dkLen=32, count=10000)
-
+def get_key(cupboard, derived_key):
     cipher = AES.new(derived_key, AES.MODE_CFB, cupboard['rk_IV'])
     random_key = cipher.decrypt(cupboard['cipher_key'])
     return random_key
@@ -314,6 +333,9 @@ def encrypt_write_file(keychain, filename, target_filename):
 def move_folders(keychain, source_dir, target_dir, encrypt):
     root_dir = None
     copy_added = 0
+    success_count = 0
+    failed_filenames = []
+
     for (root, dir_names, filenames) in os.walk(source_dir):
         if not root_dir:
             # Create new directory in target folder
@@ -350,9 +372,16 @@ def move_folders(keychain, source_dir, target_dir, encrypt):
             target_filename = os.path.join(target_subdir, os.path.basename(filename))
             if encrypt:
                 encrypt_write_file(keychain, filename, target_filename)
+                success_count += 1
             else:
                 target_filename = target_filename[:-7]
-                decrypt_write_file(keychain, filename, target_filename)
+                try:
+                    decrypt_write_file(keychain, filename, target_filename)
+                    success_count += 1
+                except KeyError:
+                    failed_filenames.append(filename)
+
+    return failed_filenames
 
 
 def update_iv_dir(keychain):
